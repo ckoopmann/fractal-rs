@@ -1,9 +1,11 @@
 mod utils;
 
-use wasm_bindgen::prelude::*;
-use rand::Rng;
+extern crate web_sys;
+use web_sys::console;
 use rand::distributions::{Distribution, Uniform};
+use rand::Rng;
 use std::fmt;
+use wasm_bindgen::prelude::*;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -12,18 +14,17 @@ use std::fmt;
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Cell {
-    Dead = 0,
-    Alive = 1,
-}
-
-#[wasm_bindgen]
 pub struct Universe {
     width: u32,
     height: u32,
-    cells: Vec<Cell>,
+    cells: Vec<bool>,
+}
+
+// A macro to provide `println!(..)`-style syntax for `console.log` logging.
+macro_rules! log {
+    ( $( $t:tt )* ) => {
+        web_sys::console::log_1(&format!( $( $t )* ).into());
+    }
 }
 
 // Interanl functions NOT exposed to JS
@@ -48,12 +49,27 @@ impl Universe {
         }
         count
     }
+
+    /// Get the dead and alive values of the entire universe.
+    pub fn get_cells(&self) -> &[bool] {
+        &self.cells
+    }
+
+    /// Set cells to be alive in a universe by passing the row and column
+    /// of each cell as an array.
+    pub fn set_cells(&mut self, cells: &[(u32, u32)]) {
+        for (row, col) in cells.iter().cloned() {
+            let idx = self.get_index(row, col);
+            self.cells[idx] = true;
+        }
+    }
 }
 
 /// Public methods, exported to JavaScript.
 #[wasm_bindgen]
 impl Universe {
     pub fn tick(&mut self) {
+        let _timer = Timer::new("Universe::tick");
         let mut next = self.cells.clone();
 
         for row in 0..self.height {
@@ -61,33 +77,29 @@ impl Universe {
                 let idx = self.get_index(row, col);
                 let cell = self.cells[idx];
                 let live_neighbors = self.live_neighbor_count(row, col);
-
                 let next_cell = match (cell, live_neighbors) {
-                    (Cell::Alive, 2) | (Cell::Alive, 3) | (Cell::Dead, 3) => Cell::Alive,
-                    _ => Cell::Dead,
+                    (true, 2) | (true, 3) | (false, 3) => true,
+                    _ => false,
                 };
 
                 next[idx] = next_cell;
             }
         }
-
         self.cells = next;
     }
 
-     pub fn new() -> Universe {
+    pub fn new() -> Universe {
+        utils::set_panic_hook();
+        log!("Creating new Universe");
         let mut rng = rand::thread_rng();
         let coin = Uniform::from(0..2);
-        let width = 64;
-        let height = 64;
+        let width = 128;
+        let height = 128;
 
         let cells = (0..width * height)
             .map(|_| {
                 let throw = coin.sample(&mut rng);
-                if throw == 0 {
-                    Cell::Alive
-                } else {
-                    Cell::Dead
-                }
+                throw == 0
             })
             .collect();
 
@@ -98,10 +110,6 @@ impl Universe {
         }
     }
 
-    pub fn render(&self) -> String {
-        self.to_string()
-    }
-
     pub fn width(&self) -> u32 {
         self.width
     }
@@ -110,23 +118,46 @@ impl Universe {
         self.height
     }
 
-    pub fn cells(&self) -> *const Cell {
+    pub fn cells(&self) -> *const bool {
         self.cells.as_ptr()
     }
 
+    /// Set the width of the universe.
+    ///
+    /// Resets all cells to the dead state.
+    pub fn set_width(&mut self, width: u32) {
+        self.width = width;
+        self.cells = (0..width * self.height).map(|_i| false).collect();
+    }
+
+    /// Set the height of the universe.
+    ///
+    /// Resets all cells to the dead state.
+    pub fn set_height(&mut self, height: u32) {
+        self.height = height;
+        self.cells = (0..self.width * height).map(|_i| false).collect();
+    }
+
+    /// Toggle Cell between dead and alive
+    pub fn toggle_cell(&mut self, row: u32, column: u32) {
+        let idx = self.get_index(row, column);
+        self.cells[idx] = !self.cells[idx];
+    }
 }
 
-// Display universe as text string
-impl fmt::Display for Universe {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for line in self.cells.as_slice().chunks(self.width as usize) {
-            for &cell in line {
-                let symbol = if cell == Cell::Dead { '◻' } else { '◼' };
-                write!(f, "{}", symbol)?;
-            }
-            write!(f, "\n")?;
-        }
+pub struct Timer<'a> {
+    name: &'a str,
+}
 
-        Ok(())
+impl<'a> Timer<'a> {
+    pub fn new(name: &'a str) -> Timer<'a> {
+        console::time_with_label(name);
+        Timer { name }
+    }
+}
+
+impl<'a> Drop for Timer<'a> {
+    fn drop(&mut self) {
+        console::time_end_with_label(self.name);
     }
 }
