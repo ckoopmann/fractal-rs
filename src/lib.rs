@@ -3,9 +3,9 @@ mod utils;
 extern crate web_sys;
 use web_sys::console;
 use rand::distributions::{Distribution, Uniform};
-use rand::Rng;
-use std::fmt;
 use wasm_bindgen::prelude::*;
+
+pub mod mandelbrot;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.

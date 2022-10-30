@@ -7,13 +7,9 @@ use wasm_bindgen_test::*;
 
 extern crate fractal_rs;
 use fractal_rs::Universe;
+use fractal_rs::mandelbrot::{Position, mandelbrot_iteration_quotient};
 
 wasm_bindgen_test_configure!(run_in_browser);
-
-#[wasm_bindgen_test]
-fn pass() {
-    assert_eq!(1 + 1, 2);
-}
 
 #[cfg(test)]
 pub fn input_spaceship() -> Universe {
@@ -47,3 +43,12 @@ pub fn test_tick() {
     input_universe.tick();
     assert_eq!(&input_universe.get_cells(), &expected_universe.get_cells());
 }
+
+#[wasm_bindgen_test]
+pub fn test_mandelbrot_series() {
+    let position = Position::new(0.0, 0.0, 1.0);
+    let quotient = mandelbrot_iteration_quotient(0, 0, 10, 10, &position);
+    assert!(quotient < 1.0);
+    assert!(quotient > 0.0);
+}
+
