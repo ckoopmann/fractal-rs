@@ -2,7 +2,6 @@ mod utils;
 
 extern crate web_sys;
 use web_sys::console;
-use rand::distributions::{Distribution, Uniform};
 use wasm_bindgen::prelude::*;
 
 pub mod mandelbrot;
@@ -14,10 +13,14 @@ pub mod mandelbrot;
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
+#[derive(Debug)]
 pub struct Universe {
     width: u32,
     height: u32,
-    cells: Vec<bool>,
+    cells_r: Vec<u8>,
+    cells_g: Vec<u8>,
+    cells_b: Vec<u8>,
+    position: mandelbrot::Position,
 }
 
 // A macro to provide `println!(..)`-style syntax for `console.log` logging.
@@ -32,82 +35,59 @@ impl Universe {
     fn get_index(&self, row: u32, column: u32) -> usize {
         (row * self.width + column) as usize
     }
-
-    fn live_neighbor_count(&self, row: u32, column: u32) -> u8 {
-        let mut count = 0;
-        for delta_row in [self.height - 1, 0, 1].iter().cloned() {
-            for delta_col in [self.width - 1, 0, 1].iter().cloned() {
-                if delta_row == 0 && delta_col == 0 {
-                    continue;
-                }
-
-                let neighbor_row = (row + delta_row) % self.height;
-                let neighbor_col = (column + delta_col) % self.width;
-                let idx = self.get_index(neighbor_row, neighbor_col);
-                count += self.cells[idx] as u8;
-            }
-        }
-        count
-    }
-
-    /// Get the dead and alive values of the entire universe.
-    pub fn get_cells(&self) -> &[bool] {
-        &self.cells
-    }
-
-    /// Set cells to be alive in a universe by passing the row and column
-    /// of each cell as an array.
-    pub fn set_cells(&mut self, cells: &[(u32, u32)]) {
-        for (row, col) in cells.iter().cloned() {
-            let idx = self.get_index(row, col);
-            self.cells[idx] = true;
-        }
-    }
 }
 
 /// Public methods, exported to JavaScript.
 #[wasm_bindgen]
 impl Universe {
-    pub fn tick(&mut self) {
-        let _timer = Timer::new("Universe::tick");
-        let mut next = self.cells.clone();
-
+    pub fn update(&mut self) {
+        let mut next_r = self.cells_r.clone();
+        let mut next_g = self.cells_g.clone();
+        let mut next_b = self.cells_b.clone();
         for row in 0..self.height {
             for col in 0..self.width {
                 let idx = self.get_index(row, col);
-                let cell = self.cells[idx];
-                let live_neighbors = self.live_neighbor_count(row, col);
-                let next_cell = match (cell, live_neighbors) {
-                    (true, 2) | (true, 3) | (false, 3) => true,
-                    _ => false,
-                };
-
-                next[idx] = next_cell;
+                let (r, g, b) = mandelbrot::mandelbrot_rgb_value(row, col, self.width, self.height, &self.position);
+                next_r[idx] = r;
+                next_g[idx] = g;
+                next_b[idx] = b;
             }
         }
-        self.cells = next;
+        self.cells_r = next_r;
+        self.cells_g = next_g;
+        self.cells_b = next_b;
     }
 
-    pub fn new() -> Universe {
+    pub fn new(width: u32, height: u32, x: f64, y: f64, zoom: f64) -> Universe {
         utils::set_panic_hook();
-        log!("Creating new Universe");
-        let mut rng = rand::thread_rng();
-        let coin = Uniform::from(0..2);
-        let width = 128;
-        let height = 128;
+        let position = mandelbrot::Position::new(x, y, zoom);
 
-        let cells = (0..width * height)
-            .map(|_| {
-                let throw = coin.sample(&mut rng);
-                throw == 0
-            })
-            .collect();
+        let mut cells_r = Vec::with_capacity((width * height) as usize);
+        cells_r.resize((width * height) as usize, 0);
+        let mut cells_g = Vec::with_capacity((width * height) as usize);
+        cells_g.resize((width * height) as usize, 0);
+        let mut cells_b = Vec::with_capacity((width * height) as usize);
+        cells_b.resize((width * height) as usize, 0);
 
-        Universe {
+        for row in 0..height {
+            for col in 0..width {
+                let idx = (row * width + col) as usize;
+                let (r, g, b) = mandelbrot::mandelbrot_rgb_value(row, col, width, height, &position);
+                cells_r[idx] = r;
+                cells_g[idx] = g;
+                cells_b[idx] = b;
+            }
+        }
+
+        let universe = Universe {
             width,
             height,
-            cells,
-        }
+            cells_r,
+            cells_g,
+            cells_b,
+            position,
+        };
+        return universe;
     }
 
     pub fn width(&self) -> u32 {
@@ -118,31 +98,40 @@ impl Universe {
         self.height
     }
 
-    pub fn cells(&self) -> *const bool {
-        self.cells.as_ptr()
+    pub fn cells_r(&self) -> *const u8 {
+        self.cells_r.as_ptr()
+    }
+    pub  fn cells_g(&self) -> *const u8 {
+        self.cells_g.as_ptr()
+    }
+    pub fn cells_b(&self) -> *const u8 {
+        self.cells_b.as_ptr()
     }
 
-    /// Set the width of the universe.
-    ///
-    /// Resets all cells to the dead state.
-    pub fn set_width(&mut self, width: u32) {
-        self.width = width;
-        self.cells = (0..width * self.height).map(|_i| false).collect();
+    pub fn zoom_in(&mut self) -> f64 {
+        return self.position.zoom_in();
     }
 
-    /// Set the height of the universe.
-    ///
-    /// Resets all cells to the dead state.
-    pub fn set_height(&mut self, height: u32) {
-        self.height = height;
-        self.cells = (0..self.width * height).map(|_i| false).collect();
+    pub fn zoom_out(&mut self) -> f64 {
+        return self.position.zoom_out();
     }
 
-    /// Toggle Cell between dead and alive
-    pub fn toggle_cell(&mut self, row: u32, column: u32) {
-        let idx = self.get_index(row, column);
-        self.cells[idx] = !self.cells[idx];
+    pub fn move_left(&mut self) -> f64 {
+        return self.position.move_left();
     }
+
+    pub fn move_right(&mut self) -> f64 {
+        return self.position.move_right();
+    }
+
+    pub fn move_up(&mut self) -> f64 {
+        return self.position.move_up();
+    }
+
+    pub fn move_down(&mut self) -> f64 {
+        return self.position.move_down();
+    }
+
 }
 
 pub struct Timer<'a> {
