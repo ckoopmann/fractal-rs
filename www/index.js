@@ -5,10 +5,11 @@ import { Universe } from "wasm-game-of-life";
 let universe;
 const canvas = document.getElementById("game-of-life-canvas");
 let zoomFactor = 1.0;
-let x = 0;
-let y = 0;
-let width;
-let height;
+let width = window.innerWidth;
+let height = window.innerHeight;
+let x = BigInt(-Math.floor(width / 4));
+let y = BigInt(0);
+let relativeMoveFactor = 10
 
 const generateUniverse = () => {
     width = window.innerWidth;
@@ -62,7 +63,7 @@ const render = () => {
 
 render();
 
-addEventListener("resize", render);
+// addEventListener("resize", render);
 
 addEventListener("keyup", (event) => {
     console.log("Keypress", event);
@@ -78,25 +79,25 @@ addEventListener("keyup", (event) => {
     }
     else if (event.key == 'w') {
         console.log("Move Up");
-        y = universe.move_up();
+        y = universe.move_vertical(BigInt(-Math.floor(height / relativeMoveFactor)));
         console.log({ y });
     }
     else if (event.key == 's') {
         // down arrow
         console.log("Move Down");
-        y = universe.move_down();
+        y = universe.move_vertical(BigInt(Math.floor(height / relativeMoveFactor)));
         console.log({ y });
     }
     else if (event.key == 'a') {
        // left arrow
          console.log("Move Left");
-        x = universe.move_left();
+        x = universe.move_horizontal(BigInt(-Math.floor(width / relativeMoveFactor)));
         console.log({ x });
     }
     else if (event.key == 'd') {
        // right arrow
             console.log("Move Right");
-        x = universe.move_right();
+        x = universe.move_horizontal(BigInt(Math.floor(width / relativeMoveFactor)));
         console.log({ x });
     }
     else {

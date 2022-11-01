@@ -58,7 +58,7 @@ impl Universe {
         self.cells_b = next_b;
     }
 
-    pub fn new(width: u32, height: u32, x: f64, y: f64, zoom: f64) -> Universe {
+    pub fn new(width: u32, height: u32, x: i64, y: i64, zoom: f64) -> Universe {
         utils::set_panic_hook();
         let position = mandelbrot::Position::new(x, y, zoom);
 
@@ -116,20 +116,12 @@ impl Universe {
         return self.position.zoom_out();
     }
 
-    pub fn move_left(&mut self) -> f64 {
-        return self.position.move_left();
+    pub fn move_horizontal(&mut self, offset: i64) -> i64 {
+        return self.position.move_horizontal(offset);
     }
 
-    pub fn move_right(&mut self) -> f64 {
-        return self.position.move_right();
-    }
-
-    pub fn move_up(&mut self) -> f64 {
-        return self.position.move_up();
-    }
-
-    pub fn move_down(&mut self) -> f64 {
-        return self.position.move_down();
+    pub fn move_vertical(&mut self, offset: i64) -> i64 {
+        return self.position.move_vertical(offset);
     }
 
 }

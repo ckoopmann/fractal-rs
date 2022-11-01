@@ -2,13 +2,13 @@ use num::complex::Complex;
 
 #[derive(Debug)]
 pub struct Position {
-    x: f64,
-    y: f64,
+    x: i64,
+    y: i64,
     zoom_factor: f64,
 }
 
 impl Position {
-    pub fn new(x: f64, y: f64, zoom_factor: f64) -> Position {
+    pub fn new(x: i64, y: i64, zoom_factor: f64) -> Position {
         Position {
             x,
             y,
@@ -16,11 +16,11 @@ impl Position {
         }
     }
 
-    pub fn get_x(&self) -> f64 {
+    pub fn get_x(&self) -> i64 {
         self.x
     }
 
-    pub fn get_y(&self) -> f64 {
+    pub fn get_y(&self) -> i64 {
         self.y
     }
 
@@ -28,11 +28,11 @@ impl Position {
         self.zoom_factor
     }
 
-    pub fn set_x(&mut self, x: f64) {
+    pub fn set_x(&mut self, x: i64) {
         self.x = x;
     }
 
-    pub fn set_y(&mut self, y: f64) {
+    pub fn set_y(&mut self, y: i64) {
         self.y = y;
     }
 
@@ -50,23 +50,13 @@ impl Position {
         return self.zoom_factor;
     }
 
-    pub fn move_up(&mut self) -> f64 {
-        self.x -= 0.1 / self.zoom_factor;
+    pub fn move_vertical(&mut self, offset: i64) -> i64 {
+        self.x += offset;
         return self.x;
     }
 
-    pub fn move_down(&mut self) -> f64 {
-        self.x += 0.1 / self.zoom_factor;
-        return self.x;
-    }
-
-    pub fn move_left(&mut self) -> f64 {
-        self.y -= 0.1 / self.zoom_factor;
-        return self.y;
-    }
-
-    pub fn move_right(&mut self) -> f64 {
-        self.y += 0.1 / self.zoom_factor;
+    pub fn move_horizontal(&mut self, offset: i64) -> i64 {
+        self.y += offset;
         return self.y;
     }
 }
@@ -79,8 +69,8 @@ impl Position {
 // The quotient is smoothed for nicer visualization based on: https://stackoverflow.com/questions/369438/smooth-spectrum-for-mandelbrot-set-rendering
 fn mandelbrot_iteration_quotient(x: u32, y: u32, width: u32, height: u32, position: &Position) -> f64 {
     // Convert x / y coordinates to real and imaginary values based on screen position and zoom level
-    let real_part = ((x as f64 / width as f64)-1.5)/position.get_zoom_factor() + position.get_x();
-    let imaginary_part = ((y as f64 /height as f64)-0.5)/position.get_zoom_factor() + position.get_y();
+    let real_part = (((x as i64 +  position.get_x()) as f64 / width as f64)-1.5)/position.get_zoom_factor();
+    let imaginary_part = (((y as i64 + position.get_y()) as f64 /height as f64)-0.5)/position.get_zoom_factor();
     let point = Complex::new(real_part, imaginary_part);
     let mut z = Complex::new(0.0, 0.0);
     let max_iter = 51;
