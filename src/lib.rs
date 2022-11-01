@@ -1,8 +1,8 @@
 mod utils;
 
 extern crate web_sys;
-use web_sys::console;
 use wasm_bindgen::prelude::*;
+use web_sys::console;
 
 pub mod mandelbrot;
 
@@ -47,7 +47,13 @@ impl Universe {
         for row in 0..self.height {
             for col in 0..self.width {
                 let idx = self.get_index(row, col);
-                let (r, g, b) = mandelbrot::mandelbrot_rgb_value(row, col, self.width, self.height, &self.position);
+                let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
+                    row,
+                    col,
+                    self.width,
+                    self.height,
+                    &self.position,
+                );
                 next_r[idx] = r;
                 next_g[idx] = g;
                 next_b[idx] = b;
@@ -72,7 +78,8 @@ impl Universe {
         for row in 0..height {
             for col in 0..width {
                 let idx = (row * width + col) as usize;
-                let (r, g, b) = mandelbrot::mandelbrot_rgb_value(row, col, width, height, &position);
+                let (r, g, b) =
+                    mandelbrot::mandelbrot_rgb_value(row, col, width, height, &position);
                 cells_r[idx] = r;
                 cells_g[idx] = g;
                 cells_b[idx] = b;
@@ -101,7 +108,7 @@ impl Universe {
     pub fn cells_r(&self) -> *const u8 {
         self.cells_r.as_ptr()
     }
-    pub  fn cells_g(&self) -> *const u8 {
+    pub fn cells_g(&self) -> *const u8 {
         self.cells_g.as_ptr()
     }
     pub fn cells_b(&self) -> *const u8 {
@@ -116,14 +123,92 @@ impl Universe {
         return self.position.zoom_out();
     }
 
-    pub fn move_horizontal(&mut self, offset: i64) -> i64 {
-        return self.position.move_horizontal(offset);
-    }
-
     pub fn move_vertical(&mut self, offset: i64) -> i64 {
-        return self.position.move_vertical(offset);
+        let new_y = self.position.move_vertical(offset);
+
+        let is_up = offset < 0;
+        let mut next_r = self.cells_r.clone();
+        let mut next_g = self.cells_g.clone();
+        let mut next_b = self.cells_b.clone();
+
+        for row in 0..self.height {
+            if (is_up && row < offset.abs() as u32)
+                || (!is_up && row >= self.height - offset.abs() as u32)
+            {
+                for col in 0..self.width {
+                    let idx = self.get_index(row, col);
+                    let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
+                        row,
+                        col,
+                        self.width,
+                        self.height,
+                        &self.position,
+                    );
+                    next_r[idx] = r;
+                    next_g[idx] = g;
+                    next_b[idx] = b;
+                }
+            } else {
+                let idx = self.get_index(row, 0);
+                let idx_next = self.get_index(row + offset as u32, 0);
+                next_r[idx..idx + self.width as usize]
+                    .copy_from_slice(&self.cells_r[idx_next..idx_next + self.width as usize]);
+                next_g[idx..idx + self.width as usize]
+                    .copy_from_slice(&self.cells_g[idx_next..idx_next + self.width as usize]);
+                next_b[idx..idx + self.width as usize]
+                    .copy_from_slice(&self.cells_b[idx_next..idx_next + self.width as usize]);
+            }
+        }
+
+        self.cells_r = next_r;
+        self.cells_g = next_g;
+        self.cells_b = next_b;
+        return new_y;
     }
 
+    pub fn move_horizontal(&mut self, offset: i64) -> i64 {
+        let new_x = self.position.move_horizontal(offset);
+
+        let is_left = offset < 0;
+        let mut next_r = self.cells_r.clone();
+        let mut next_g = self.cells_g.clone();
+        let mut next_b = self.cells_b.clone();
+
+        for col in 0..self.width {
+            if (is_left && col < offset.abs() as u32)
+                || (!is_left && col >= self.width - offset.abs() as u32)
+            {
+                for row in 0..self.height {
+                    let idx = self.get_index(row, col);
+                    let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
+                        row,
+                        col,
+                        self.width,
+                        self.height,
+                        &self.position,
+                    );
+                    next_r[idx] = r;
+                    next_g[idx] = g;
+                    next_b[idx] = b;
+                }
+            } else {
+                let source_col = col + offset as u32;
+                for row in 0..self.height {
+                    let idx = self.get_index(row, col);
+                    let idx_source = self.get_index(row, source_col);
+                    next_r[idx] = self.cells_r[idx_source].clone();
+                    next_g[idx] = self.cells_g[idx_source].clone();
+                    next_b[idx] = self.cells_b[idx_source].clone();
+                }
+            }
+        }
+
+        self.cells_r = next_r;
+        self.cells_g = next_g;
+        self.cells_b = next_b;
+
+        return new_x;
+    }
 }
 
 pub struct Timer<'a> {

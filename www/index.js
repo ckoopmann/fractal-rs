@@ -9,7 +9,7 @@ let width = window.innerWidth;
 let height = window.innerHeight;
 let x = BigInt(-Math.floor(width / 4));
 let y = BigInt(0);
-let relativeMoveFactor = 10
+let relativeMoveFactor = 50;
 
 const generateUniverse = () => {
     width = window.innerWidth;
@@ -66,44 +66,46 @@ render();
 // addEventListener("resize", render);
 
 addEventListener("keyup", (event) => {
-    console.log("Keypress", event);
     if (event.key === "+") {
         console.log("Zoom in");
         zoomFactor = universe.zoom_in();
         console.log({ zoomFactor });
-    }
-    else if (event.key === "-") {
+        universe.update();
+    } else if (event.key === "-") {
         console.log("Zoom out");
         zoomFactor = universe.zoom_out();
         console.log({ zoomFactor });
-    }
-    else if (event.key == 'w') {
+        universe.update();
+    } else if (event.key == "w") {
         console.log("Move Up");
-        y = universe.move_vertical(BigInt(-Math.floor(height / relativeMoveFactor)));
+        y = universe.move_vertical(
+            BigInt(-Math.floor(height / relativeMoveFactor))
+        );
         console.log({ y });
-    }
-    else if (event.key == 's') {
+    } else if (event.key == "s") {
         // down arrow
         console.log("Move Down");
-        y = universe.move_vertical(BigInt(Math.floor(height / relativeMoveFactor)));
+        y = universe.move_vertical(
+            BigInt(Math.floor(height / relativeMoveFactor))
+        );
         console.log({ y });
-    }
-    else if (event.key == 'a') {
-       // left arrow
-         console.log("Move Left");
-        x = universe.move_horizontal(BigInt(-Math.floor(width / relativeMoveFactor)));
+    } else if (event.key == "a") {
+        // left arrow
+        console.log("Move Left");
+        x = universe.move_horizontal(
+            BigInt(-Math.floor(width / relativeMoveFactor))
+        );
         console.log({ x });
-    }
-    else if (event.key == 'd') {
-       // right arrow
-            console.log("Move Right");
-        x = universe.move_horizontal(BigInt(Math.floor(width / relativeMoveFactor)));
+    } else if (event.key == "d") {
+        // right arrow
+        console.log("Move Right");
+        x = universe.move_horizontal(
+            BigInt(Math.floor(width / relativeMoveFactor))
+        );
         console.log({ x });
-    }
-    else {
+    } else {
         return;
     }
-    universe.update();
     requestAnimationFrame(() => {
         drawCells();
     });
