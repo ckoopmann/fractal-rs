@@ -127,42 +127,56 @@ impl Universe {
         let new_y = self.position.move_vertical(offset);
 
         let is_up = offset < 0;
-        let mut next_r = self.cells_r.clone();
-        let mut next_g = self.cells_g.clone();
-        let mut next_b = self.cells_b.clone();
 
-        for row in 0..self.height {
-            if (is_up && row < offset.abs() as u32)
-                || (!is_up && row >= self.height - offset.abs() as u32)
-            {
-                for col in 0..self.width {
-                    let idx = self.get_index(row, col);
-                    let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
-                        row,
-                        col,
-                        self.width,
-                        self.height,
-                        &self.position,
-                    );
-                    next_r[idx] = r;
-                    next_g[idx] = g;
-                    next_b[idx] = b;
-                }
-            } else {
-                let idx = self.get_index(row, 0);
-                let idx_next = self.get_index(row + offset as u32, 0);
-                next_r[idx..idx + self.width as usize]
-                    .copy_from_slice(&self.cells_r[idx_next..idx_next + self.width as usize]);
-                next_g[idx..idx + self.width as usize]
-                    .copy_from_slice(&self.cells_g[idx_next..idx_next + self.width as usize]);
-                next_b[idx..idx + self.width as usize]
-                    .copy_from_slice(&self.cells_b[idx_next..idx_next + self.width as usize]);
+        let start_new = if is_up {
+            0
+        } else {
+            self.height - offset.abs() as u32
+        };
+
+        let end_new = if is_up {
+            offset.abs() as u32
+        } else {
+            self.height
+        };
+
+        // Copy cells that don't need to be recalcualted
+        let offset_cells = self.width * offset.abs() as u32;
+        let start_index_copy = if is_up { 0 } else { offset_cells } as usize;
+        let end_index_copy = if is_up {
+            self.height * self.width - offset_cells
+        } else {
+            self.height * self.width
+        } as usize;
+        let target_index_copy = if is_up {
+            offset.abs() as u32 * self.width
+        } else {
+            0
+        } as usize;
+        self.cells_r
+            .copy_within(start_index_copy..end_index_copy, target_index_copy);
+        self.cells_g
+            .copy_within(start_index_copy..end_index_copy, target_index_copy);
+        self.cells_b
+            .copy_within(start_index_copy..end_index_copy, target_index_copy);
+
+        // Recalculate the rest
+        for row in start_new..end_new {
+            for col in 0..self.width {
+                let idx = self.get_index(row, col);
+                let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
+                    row,
+                    col,
+                    self.width,
+                    self.height,
+                    &self.position,
+                );
+                self.cells_r[idx] = r;
+                self.cells_g[idx] = g;
+                self.cells_b[idx] = b;
             }
         }
 
-        self.cells_r = next_r;
-        self.cells_g = next_g;
-        self.cells_b = next_b;
         return new_y;
     }
 
@@ -170,42 +184,65 @@ impl Universe {
         let new_x = self.position.move_horizontal(offset);
 
         let is_left = offset < 0;
-        let mut next_r = self.cells_r.clone();
-        let mut next_g = self.cells_g.clone();
-        let mut next_b = self.cells_b.clone();
 
-        for col in 0..self.width {
-            if (is_left && col < offset.abs() as u32)
-                || (!is_left && col >= self.width - offset.abs() as u32)
-            {
-                for row in 0..self.height {
-                    let idx = self.get_index(row, col);
-                    let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
-                        row,
-                        col,
-                        self.width,
-                        self.height,
-                        &self.position,
-                    );
-                    next_r[idx] = r;
-                    next_g[idx] = g;
-                    next_b[idx] = b;
-                }
-            } else {
-                let source_col = col + offset as u32;
+        let col_start_new = if is_left {
+            0
+        } else {
+            self.width - offset.abs() as u32
+        };
+
+        let col_end_new = if is_left {
+            offset.abs() as u32
+        } else {
+            self.width
+        };
+
+        let copy_range = if is_left {
+            col_end_new..self.width
+        } else {
+            0..col_start_new
+        };
+        if is_left {
+            for col in copy_range.rev() {
+                let source_col = (col as i64 + offset) as u32;
                 for row in 0..self.height {
                     let idx = self.get_index(row, col);
                     let idx_source = self.get_index(row, source_col);
-                    next_r[idx] = self.cells_r[idx_source].clone();
-                    next_g[idx] = self.cells_g[idx_source].clone();
-                    next_b[idx] = self.cells_b[idx_source].clone();
+                    self.cells_r[idx] = self.cells_r[idx_source].clone();
+                    self.cells_g[idx] = self.cells_g[idx_source].clone();
+                    self.cells_b[idx] = self.cells_b[idx_source].clone();
+                }
+            }
+        } else {
+            for col in copy_range {
+                let source_col = (col as i64 + offset) as u32;
+                for row in 0..self.height {
+                    let idx = self.get_index(row, col);
+                    let idx_source = self.get_index(row, source_col);
+                    self.cells_r[idx] = self.cells_r[idx_source].clone();
+                    self.cells_g[idx] = self.cells_g[idx_source].clone();
+                    self.cells_b[idx] = self.cells_b[idx_source].clone();
                 }
             }
         }
 
-        self.cells_r = next_r;
-        self.cells_g = next_g;
-        self.cells_b = next_b;
+        let calculate_range = col_start_new..col_end_new;
+        for col in calculate_range {
+            // Calcualte cells
+            for row in 0..self.height {
+                let idx = self.get_index(row, col);
+                let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
+                    row,
+                    col,
+                    self.width,
+                    self.height,
+                    &self.position,
+                );
+                self.cells_r[idx] = r;
+                self.cells_g[idx] = g;
+                self.cells_b[idx] = b;
+            }
+        }
 
         return new_x;
     }
