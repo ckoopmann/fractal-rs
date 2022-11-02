@@ -30,22 +30,37 @@ macro_rules! log {
     }
 }
 
+fn maybe_reverse_range(start: u32, end: u32) -> Box<dyn Iterator<Item=u32>> {
+    if start > end {
+        Box::new((end..start).rev())
+    } else {
+        Box::new(start..end)
+    }
+}
+
+// fn maybe_reverse_range<usize>(start: usize, end: usize) -> Box<dyn Iterator<Item=usize:std::iter>> 
+// {
+//     if start > end {
+//         Box::new((end..start).rev())
+//     } else {
+//         Box::new((start..end))
+//     }
+// }
+
 // Interanl functions NOT exposed to JS
 impl Universe {
     fn get_index(&self, row: u32, column: u32) -> usize {
         (row * self.width + column) as usize
     }
-}
 
-/// Public methods, exported to JavaScript.
-#[wasm_bindgen]
-impl Universe {
-    pub fn update(&mut self) {
-        let mut next_r = self.cells_r.clone();
-        let mut next_g = self.cells_g.clone();
-        let mut next_b = self.cells_b.clone();
-        for row in 0..self.height {
-            for col in 0..self.width {
+    fn recalculate_cells(&mut self, row_start: u32, row_end: u32, col_start: u32, col_end: u32) -> ()
+    {
+        let col_range = maybe_reverse_range(col_start, col_end);
+        col_range.for_each(|col| {
+            // Calcualte cells
+            let row_range = maybe_reverse_range(row_start, row_end);
+            row_range.for_each(|row| {
+                // log!("ForEach Col {:?}, Row {:?}", col, row);
                 let idx = self.get_index(row, col);
                 let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
                     row,
@@ -54,14 +69,24 @@ impl Universe {
                     self.height,
                     &self.position,
                 );
-                next_r[idx] = r;
-                next_g[idx] = g;
-                next_b[idx] = b;
-            }
-        }
-        self.cells_r = next_r;
-        self.cells_g = next_g;
-        self.cells_b = next_b;
+                if r == self.cells_r[idx] && g == self.cells_g[idx] && b == self.cells_b[idx] {
+                    // log!("No change");
+                } else {
+                    // log!("Change");
+                }
+                self.cells_r[idx] = r;
+                self.cells_g[idx] = g;
+                self.cells_b[idx] = b;
+            });
+        });
+    }
+}
+
+/// Public methods, exported to JavaScript.
+#[wasm_bindgen]
+impl Universe {
+    pub fn update(&mut self) {
+        self.recalculate_cells(0, self.height, 0, self.width);
     }
 
     pub fn new(width: u32, height: u32, x: i64, y: i64, zoom: f64) -> Universe {
@@ -75,18 +100,8 @@ impl Universe {
         let mut cells_b = Vec::with_capacity((width * height) as usize);
         cells_b.resize((width * height) as usize, 0);
 
-        for row in 0..height {
-            for col in 0..width {
-                let idx = (row * width + col) as usize;
-                let (r, g, b) =
-                    mandelbrot::mandelbrot_rgb_value(row, col, width, height, &position);
-                cells_r[idx] = r;
-                cells_g[idx] = g;
-                cells_b[idx] = b;
-            }
-        }
 
-        let universe = Universe {
+        let mut universe = Universe {
             width,
             height,
             cells_r,
@@ -94,6 +109,7 @@ impl Universe {
             cells_b,
             position,
         };
+        universe.update();
         return universe;
     }
 
@@ -160,22 +176,7 @@ impl Universe {
         self.cells_b
             .copy_within(start_index_copy..end_index_copy, target_index_copy);
 
-        // Recalculate the rest
-        for row in start_new..end_new {
-            for col in 0..self.width {
-                let idx = self.get_index(row, col);
-                let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
-                    row,
-                    col,
-                    self.width,
-                    self.height,
-                    &self.position,
-                );
-                self.cells_r[idx] = r;
-                self.cells_g[idx] = g;
-                self.cells_b[idx] = b;
-            }
-        }
+        self.recalculate_cells(start_new, end_new, 0, self.width);
 
         return new_y;
     }
@@ -226,24 +227,7 @@ impl Universe {
             }
         }
 
-        let calculate_range = col_start_new..col_end_new;
-        for col in calculate_range {
-            // Calcualte cells
-            for row in 0..self.height {
-                let idx = self.get_index(row, col);
-                let (r, g, b) = mandelbrot::mandelbrot_rgb_value(
-                    row,
-                    col,
-                    self.width,
-                    self.height,
-                    &self.position,
-                );
-                self.cells_r[idx] = r;
-                self.cells_g[idx] = g;
-                self.cells_b[idx] = b;
-            }
-        }
-
+        self.recalculate_cells(0, self.height, col_start_new, col_end_new);
         return new_x;
     }
 }
