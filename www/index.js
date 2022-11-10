@@ -1,6 +1,6 @@
 // Import the WebAssembly memory at the top of the file.
-import { memory } from "wasm-game-of-life/fractal_rs_bg";
-import { Universe } from "wasm-game-of-life";
+import { memory } from "wasm-game-of-life/fractal_rs_bg.wasm";
+import { Universe, WorkerPool } from "wasm-game-of-life";
 
 let universe;
 const canvas = document.getElementById("game-of-life-canvas");
@@ -10,12 +10,15 @@ let height = window.innerHeight;
 let x = BigInt(-Math.floor(width / 4));
 let y = BigInt(0);
 let relativeMoveFactor = 50;
+let threads = 1;
+let pool = new WorkerPool(threads);
 
 const generateUniverse = () => {
     width = window.innerWidth;
     height = window.innerHeight;
-    console.log("Generating new universe", { width, height, x, y, zoomFactor });
-    universe = Universe.new(width, height, y, x, zoomFactor);
+    console.log("Generating new universe", { width, height, x, y, zoomFactor, zoomFactor, threads });
+    universe = Universe.new(width, height, y, x, zoomFactor, pool, threads);
+    console.log("Generated universe");
 
     canvas.height = height;
     canvas.width = width;
@@ -82,14 +85,16 @@ addEventListener("keyup", (event) => {
     } else if (event.key == "w") {
         console.log("Move Up");
         y = universe.move_vertical(
-            BigInt(-Math.floor(height / relativeMoveFactor))
+            BigInt(-Math.floor(height / relativeMoveFactor)),
+            pool
         );
         console.log({ y });
     } else if (event.key == "s") {
         // down arrow
         console.log("Move Down");
         y = universe.move_vertical(
-            BigInt(Math.floor(height / relativeMoveFactor))
+            BigInt(Math.floor(height / relativeMoveFactor)),
+            pool
         );
         console.log({ y });
     } else if (event.key == "a") {

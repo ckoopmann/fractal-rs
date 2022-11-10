@@ -1,12 +1,13 @@
 #![feature(async_closure)]
+mod pool;
 mod utils;
 
 extern crate web_sys;
 use futures_channel::oneshot;
 use js_sys::Promise;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::cell::UnsafeCell;
 use std::sync::Arc;
-use std::thread;
 use wasm_bindgen::prelude::*;
 use web_sys::console;
 
@@ -40,6 +41,7 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 #[wasm_bindgen]
 #[derive(Debug)]
 pub struct Universe {
+    pool: std::sync::Arc<ThreadPool>,
     width: u32,
     height: u32,
     cells_r: Arc<SyncUnsafeCell<Vec<u8>>>,
@@ -113,64 +115,6 @@ impl Universe {
     fn get_index(&self, row: u32, column: u32) -> usize {
         (row * self.width + column) as usize
     }
-
-    fn _move_vertical(&self, offset: i64) -> Result<Promise, JsValue> {
-        let (tx, rx) = oneshot::channel();
-        let position_mutex = self.position.clone();
-        let cells_r_mutex = self.cells_r.clone();
-        let cells_g_mutex = self.cells_g.clone();
-        let cells_b_mutex = self.cells_b.clone();
-        let width = self.width.clone();
-        let height = self.height.clone();
-
-        thread::spawn(move || {
-            let cells_r = &mut cells_r_mutex.get();
-            let cells_g = &mut cells_g_mutex.get();
-            let cells_b = &mut cells_b_mutex.get();
-            let position = &mut position_mutex.get();
-            let new_y = position.move_vertical(offset);
-            let is_up = offset < 0;
-
-            let start_new = if is_up {
-                0
-            } else {
-                height - offset.abs() as u32
-            };
-
-            let end_new = if is_up { offset.abs() as u32 } else { height };
-
-            // Copy cells that don't need to be recalcualted
-            let offset_cells = width * offset.abs() as u32;
-            let start_index_copy = if is_up { 0 } else { offset_cells } as usize;
-            let end_index_copy = if is_up {
-                height * width - offset_cells
-            } else {
-                height * width
-            } as usize;
-            let target_index_copy = if is_up {
-                offset.abs() as u32 * width
-            } else {
-                0
-            } as usize;
-            cells_r.copy_within(start_index_copy..end_index_copy, target_index_copy);
-            cells_g.copy_within(start_index_copy..end_index_copy, target_index_copy);
-            cells_b.copy_within(start_index_copy..end_index_copy, target_index_copy);
-
-            recalculate_cells(
-                start_new, end_new, 0, width, position, cells_r, cells_g, cells_b, width, height,
-            );
-            tx.send(new_y).unwrap();
-        });
-
-        let done = async move {
-            // console_log!("done!");
-            match rx.await {
-                Ok(y) => Ok(JsValue::from(y)),
-                Err(_) => Err(JsValue::undefined()),
-            }
-        };
-        return Ok(wasm_bindgen_futures::future_to_promise(done));
-    }
 }
 
 /// Public methods, exported to JavaScript.
@@ -199,7 +143,15 @@ impl Universe {
         );
     }
 
-    pub fn new(width: u32, height: u32, x: i64, y: i64, zoom: f64) -> Universe {
+    pub fn new(
+        width: u32,
+        height: u32,
+        x: i64,
+        y: i64,
+        zoom: f64,
+        pool: &pool::WorkerPool,
+        threads: usize
+    ) -> Universe {
         utils::set_panic_hook();
         let position = mandelbrot::Position::new(x, y, zoom);
 
@@ -210,9 +162,17 @@ impl Universe {
         let mut cells_b = Vec::with_capacity((width * height) as usize);
         cells_b.resize((width * height) as usize, 0);
 
-        let mut universe = Universe {
+        // Configure a rayon thread pool which will pull web workers from
+        let thread_pool = ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .spawn_handler(|thread| Ok(pool.run(|| thread.run()).unwrap()))
+            .build()
+            .unwrap();
+
+        let universe = Universe {
             width,
             height,
+            pool: Arc::new(thread_pool),
             cells_r: Arc::new(SyncUnsafeCell::new(cells_r)),
             cells_g: Arc::new(SyncUnsafeCell::new(cells_g)),
             cells_b: Arc::new(SyncUnsafeCell::new(cells_b)),
@@ -260,8 +220,66 @@ impl Universe {
         return position.zoom_out();
     }
 
-    pub fn move_vertical(&self, offset: i64) -> Result<Promise, JsValue> {
-        self._move_vertical(offset)
+    pub fn move_vertical(&self, offset: i64, pool: &pool::WorkerPool) -> Result<Promise, JsValue> {
+        let (tx, rx) = oneshot::channel();
+        let position_mutex = self.position.clone();
+        let cells_r_mutex = self.cells_r.clone();
+        let cells_g_mutex = self.cells_g.clone();
+        let cells_b_mutex = self.cells_b.clone();
+        let width = self.width.clone();
+        let height = self.height.clone();
+        let thread_pool = self.pool.clone();
+
+        pool.run(move || {
+            thread_pool.install(|| {
+                let cells_r = &mut cells_r_mutex.get();
+                let cells_g = &mut cells_g_mutex.get();
+                let cells_b = &mut cells_b_mutex.get();
+                let position = &mut position_mutex.get();
+                let new_y = position.move_vertical(offset);
+                let is_up = offset < 0;
+
+                let start_new = if is_up {
+                    0
+                } else {
+                    height - offset.abs() as u32
+                };
+
+                let end_new = if is_up { offset.abs() as u32 } else { height };
+
+                // Copy cells that don't need to be recalcualted
+                let offset_cells = width * offset.abs() as u32;
+                let start_index_copy = if is_up { 0 } else { offset_cells } as usize;
+                let end_index_copy = if is_up {
+                    height * width - offset_cells
+                } else {
+                    height * width
+                } as usize;
+                let target_index_copy = if is_up {
+                    offset.abs() as u32 * width
+                } else {
+                    0
+                } as usize;
+                cells_r.copy_within(start_index_copy..end_index_copy, target_index_copy);
+                cells_g.copy_within(start_index_copy..end_index_copy, target_index_copy);
+                cells_b.copy_within(start_index_copy..end_index_copy, target_index_copy);
+
+                recalculate_cells(
+                    start_new, end_new, 0, width, position, cells_r, cells_g, cells_b, width,
+                    height,
+                );
+                tx.send(new_y).unwrap();
+            });
+        }).unwrap();
+
+        let done = async move {
+            // console_log!("done!");
+            match rx.await {
+                Ok(y) => Ok(JsValue::from(y)),
+                Err(_) => Err(JsValue::undefined()),
+            }
+        };
+        return Ok(wasm_bindgen_futures::future_to_promise(done));
     }
 
     pub fn move_horizontal(&self, offset: i64) -> i64 {
