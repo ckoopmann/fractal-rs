@@ -22,10 +22,13 @@ const generateUniverse = () => {
 };
 
 const drawCells = () => {
+    console.log("drawing Cells");
     const cellsRPtr = universe.cells_r();
+    console.log("cellsRPtr", cellsRPtr);
     const cellsR = new Uint8Array(memory.buffer, cellsRPtr, width * height);
 
     const cellsGPtr = universe.cells_g();
+    console.log("cellsGPtr", cellsGPtr);
     const cellsG = new Uint8Array(memory.buffer, cellsGPtr, width * height);
 
     const cellsBPtr = universe.cells_b();
