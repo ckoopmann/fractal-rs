@@ -11,7 +11,14 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-wasm-bindgen = "0.2.63"
+wasm-bindgen = "0.2.82"
+js-sys = "0.3"
+web-sys = { version = "0.3.60", features = ["console", "DedicatedWorkerGlobalScope", "ErrorEvent"] }
+num = { version = "0.4" }
+rayon="1.3.0"
+wasm-bindgen-futures = "0.4.33"
+futures-channel = "0.3.25"
+
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
